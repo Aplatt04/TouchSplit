@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (MinGW-w64, NSIS)
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 nsis zip
+
+      - name: Check release tag matches src/version.h
+        if: github.event_name == 'release'
+        run: |
+          v="$(make -s version)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$v" != "$tag" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match version $v in src/version.h"
+            exit 1
+          fi
+
+      - name: Build exe, installer and portable zip
+        run: make dist REPO_URL=${{ github.server_url }}/${{ github.repository }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TouchSplit-${{ github.sha }}
+          path: dist/*
+
+      - name: Attach files to the release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/TouchSplit-Setup-*.exe
+            dist/TouchSplit-*-portable.zip
+            dist/SHA256SUMS.txt
